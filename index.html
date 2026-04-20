@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Koatji — New Customer Requests Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --accent: #6c63ff;
+    --accent2: #00c9a7;
+    --text: #e4e4e7;
+    --muted: #71717a;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --success: #22c55e;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height:100vh; }
+
+  /* Header */
+  .header { padding: 24px 32px; border-bottom: 1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; }
+  .header h1 { font-size: 22px; font-weight: 700; }
+  .header h1 span { color: var(--accent); }
+  .header-right { display:flex; align-items:center; gap:16px; font-size:13px; color:var(--muted); }
+  .last-updated { background:var(--card); padding:6px 12px; border-radius:6px; border:1px solid var(--border); }
+
+  /* Controls */
+  .controls { padding: 20px 32px; display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .control-group { display:flex; align-items:center; gap:8px; }
+  .control-group label { font-size:13px; color:var(--muted); font-weight:500; }
+  select, input[type="text"], input[type="file"] {
+    background: var(--card); border:1px solid var(--border); color:var(--text);
+    padding: 8px 12px; border-radius:8px; font-size:13px; outline:none;
+  }
+  select:focus, input:focus { border-color: var(--accent); }
+  .btn { padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:var(--accent); color:#fff; font-size:13px; cursor:pointer; font-weight:500; transition: opacity .15s; }
+  .btn:hover { opacity:.85; }
+  .btn-outline { background:transparent; border-color:var(--border); color:var(--text); }
+  .btn-outline:hover { border-color:var(--accent); }
+  .search-input { min-width:200px; }
+
+  /* KPI Cards */
+  .kpi-row { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap:16px; padding:0 32px 20px; }
+  .kpi { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .kpi-label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:8px; }
+  .kpi-value { font-size:28px; font-weight:700; }
+  .kpi-sub { font-size:12px; color:var(--muted); margin-top:4px; }
+  .kpi-accent { color: var(--accent); }
+  .kpi-green { color: var(--success); }
+  .kpi-warning { color: var(--warning); }
+
+  /* Charts area */
+  .charts-row { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding:0 32px 20px; }
+  .chart-card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .chart-card h3 { font-size:14px; font-weight:600; margin-bottom:16px; }
+  .chart-card canvas { width:100% !important; }
+  @media(max-width:900px){ .charts-row { grid-template-columns:1fr; } }
+
+  /* Table */
+  .table-section { padding: 0 32px 32px; }
+  .table-card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .table-card h3 { padding:16px 20px; font-size:14px; font-weight:600; border-bottom:1px solid var(--border); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; padding:12px 16px; font-size:12px; text-transform:uppercase; color:var(--muted); letter-spacing:.5px; border-bottom:1px solid var(--border); cursor:pointer; user-select:none; }
+  th:hover { color:var(--accent); }
+  th .sort-arrow { margin-left:4px; font-size:10px; }
+  td { padding:12px 16px; font-size:13px; border-bottom:1px solid var(--border); }
+  tr:last-child td { border-bottom:none; }
+  tr:hover td { background:rgba(108,99,255,.05); }
+  .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+  .badge-type { background:rgba(108,99,255,.15); color:var(--accent); }
+  .pagination { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-top:1px solid var(--border); font-size:13px; color:var(--muted); }
+  .pagination button { background:var(--card); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:6px; cursor:pointer; font-size:12px; }
+  .pagination button:disabled { opacity:.4; cursor:default; }
+
+  /* Map placeholder */
+  .map-placeholder { display:flex; align-items:center; justify-content:center; height:300px; color:var(--muted); font-size:14px; flex-direction:column; gap:8px; }
+
+  /* Import modal */
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; align-items:center; justify-content:center; }
+  .modal-overlay.active { display:flex; }
+  .modal { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; max-width:560px; width:90%; }
+  .modal h2 { font-size:18px; margin-bottom:8px; }
+  .modal p { font-size:13px; color:var(--muted); margin-bottom:20px; line-height:1.5; }
+  .modal textarea { width:100%; height:200px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:12px; font-size:12px; font-family:monospace; resize:vertical; }
+  .modal-actions { display:flex; gap:8px; margin-top:16px; justify-content:flex-end; }
+
+  /* CSV drop zone */
+  .drop-zone { border:2px dashed var(--border); border-radius:12px; padding:32px; text-align:center; color:var(--muted); font-size:13px; margin-bottom:16px; cursor:pointer; transition: border-color .2s; }
+  .drop-zone:hover, .drop-zone.dragover { border-color:var(--accent); color:var(--text); }
+
+  .tab-bar { display:flex; gap:4px; margin-bottom:16px; }
+  .tab-btn { padding:6px 14px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--muted); font-size:12px; cursor:pointer; }
+  .tab-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  /* Map */
+  .map-section { padding: 0 32px 20px; }
+  .map-card { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .map-card-header { padding:16px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); }
+  .map-card-header h3 { font-size:14px; font-weight:600; }
+  .map-legend { display:flex; gap:16px; align-items:center; font-size:11px; color:var(--muted); }
+  .legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; }
+  #mapContainer { height: 600px; background: #0d1117; }
+  .leaflet-container { background: #0d1117 !important; }
+  .leaflet-tile-pane { filter: saturate(0.3) brightness(0.65) contrast(1.1); }
+  .map-tooltip { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:10px 14px; color:var(--text); font-size:12px; box-shadow:0 4px 20px rgba(0,0,0,.4); }
+  .map-tooltip .tt-name { font-weight:700; font-size:13px; margin-bottom:4px; }
+  .map-tooltip .tt-detail { color:var(--muted); }
+  .map-stats { display:flex; gap:20px; padding:12px 20px; border-top:1px solid var(--border); font-size:12px; color:var(--muted); }
+  .map-stats span { color:var(--text); font-weight:600; }
+  .leaflet-popup-content-wrapper { background:var(--card) !important; color:var(--text) !important; border-radius:10px !important; border:1px solid var(--border) !important; box-shadow:0 4px 24px rgba(0,0,0,.5) !important; }
+  .leaflet-popup-tip { background:var(--card) !important; }
+  .leaflet-popup-content { margin:10px 14px !important; font-size:12px !important; line-height:1.5 !important; }
+  .cluster-icon { background:rgba(108,99,255,.25); border:2px solid rgba(108,99,255,.6); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:700; font-size:13px; backdrop-filter:blur(4px); }
+  .geocoding-status { font-size:11px; color:var(--muted); padding:0 4px; }
+
+  /* Map fullscreen */
+  .map-card.fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    border-radius: 0;
+    border: none;
+    display: flex;
+    flex-direction: column;
+  }
+  .map-card.fullscreen #mapContainer {
+    flex: 1;
+    height: auto !important;
+  }
+  .btn-fullscreen {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: border-color .15s;
+  }
+  .btn-fullscreen:hover { border-color: var(--accent); }
+
+  /* Settings panel */
+  .settings-panel { display:none; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px 24px; margin:0 32px 20px; }
+  .settings-panel.active { display:block; }
+  .settings-panel h3 { font-size:14px; font-weight:600; margin-bottom:12px; }
+  .settings-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .settings-row input[type="text"] { flex:1; min-width:300px; background:var(--bg); border:1px solid var(--border); color:var(--text); padding:10px 14px; border-radius:8px; font-size:13px; font-family:monospace; }
+  .settings-row input[type="text"]:focus { border-color:var(--accent); outline:none; }
+  .settings-help { font-size:12px; color:var(--muted); margin-top:8px; line-height:1.5; }
+  .sync-status { font-size:12px; padding:4px 10px; border-radius:6px; }
+  .sync-ok { color:var(--success); background:rgba(34,197,94,.1); }
+  .sync-err { color:var(--danger); background:rgba(239,68,68,.1); }
+  .sync-loading { color:var(--warning); background:rgba(245,158,11,.1); }
+  .btn-sync { background:var(--accent2); border-color:var(--accent2); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>Koatji</span> — New Customer Requests</h1>
+  <div class="header-right">
+    <button class="btn btn-sync" onclick="syncFromSheet()">Sync Now</button>
+    <button class="btn-outline btn" onclick="toggleSettings()">Settings</button>
+    <button class="btn-outline btn" onclick="openImport()">+ Import Data</button>
+    <button class="btn-outline btn" onclick="exportCSV()">Export CSV</button>
+    <button class="btn-outline btn" onclick="exportExcel()">Export Excel</button>
+    <span class="sync-status" id="syncStatus"></span>
+    <div class="last-updated" id="lastUpdated">Last updated: —</div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="control-group">
+    <label>Time View:</label>
+    <select id="timeView" onchange="applyFilters()">
+      <option value="all">All Time</option>
+      <option value="week">This Week</option>
+      <option value="month">This Month</option>
+      <option value="quarter">This Quarter</option>
+      <option value="year">This Year</option>
+      <option value="custom">Custom Range</option>
+    </select>
+  </div>
+  <div class="control-group" id="customRange" style="display:none;">
+    <label>From:</label>
+    <input type="date" id="dateFrom" onchange="applyFilters()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:8px;">
+    <label>To:</label>
+    <input type="date" id="dateTo" onchange="applyFilters()" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:8px;">
+  </div>
+  <div class="control-group">
+    <label>Country:</label>
+    <select id="countryFilter" onchange="applyFilters()"><option value="all">All Countries</option></select>
+  </div>
+  <div class="control-group">
+    <label>Region:</label>
+    <select id="regionFilter" onchange="applyFilters()"><option value="all">All Regions</option></select>
+  </div>
+  <div class="control-group">
+    <label>State:</label>
+    <select id="stateFilter" onchange="applyFilters()"><option value="all">All States</option></select>
+  </div>
+  <div class="control-group">
+    <label>City:</label>
+    <select id="cityFilter" onchange="applyFilters()"><option value="all">All Cities</option></select>
+  </div>
+  <div class="control-group">
+    <label>Type:</label>
+    <select id="typeFilter" onchange="applyFilters()"><option value="all">All Types</option></select>
+  </div>
+  <div class="control-group">
+    <input type="text" class="search-input" id="searchInput" placeholder="Search name, business, email..." oninput="applyFilters()">
+  </div>
+</div>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-label">Total Requests</div><div class="kpi-value kpi-accent" id="kpiTotal">0</div><div class="kpi-sub" id="kpiTotalSub">filtered</div></div>
+  <div class="kpi"><div class="kpi-label">Countries</div><div class="kpi-value" id="kpiCountries" style="color:#06b6d4;">0</div><div class="kpi-sub" id="kpiCountriesSub">—</div></div>
+  <div class="kpi"><div class="kpi-label">States / Regions</div><div class="kpi-value kpi-green" id="kpiStates">0</div><div class="kpi-sub" id="kpiStatesSub">—</div></div>
+  <div class="kpi"><div class="kpi-label">Cities</div><div class="kpi-value kpi-warning" id="kpiCities">0</div><div class="kpi-sub" id="kpiCitiesSub">—</div></div>
+  <div class="kpi"><div class="kpi-label">Regions</div><div class="kpi-value" id="kpiRegions" style="color:#8b5cf6;">0</div><div class="kpi-sub" id="kpiRegionsSub">—</div></div>
+  <div class="kpi"><div class="kpi-label">This Week</div><div class="kpi-value" id="kpiWeek">0</div><div class="kpi-sub" id="kpiWeekSub">new requests</div></div>
+</div>
+
+<div class="charts-row">
+  <div class="chart-card">
+    <h3>Requests Over Time</h3>
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="setTimeGrouping('week',this)">Weekly</button>
+      <button class="tab-btn" onclick="setTimeGrouping('month',this)">Monthly</button>
+      <button class="tab-btn" onclick="setTimeGrouping('quarter',this)">Quarterly</button>
+      <button class="tab-btn" onclick="setTimeGrouping('year',this)">Yearly</button>
+    </div>
+    <canvas id="timeChart" height="220"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>Requests by State</h3>
+    <canvas id="stateChart" height="260"></canvas>
+  </div>
+</div>
+<div class="charts-row">
+  <div class="chart-card">
+    <h3>Requests by Business Type</h3>
+    <canvas id="typeChart" height="220"></canvas>
+  </div>
+  <div class="chart-card">
+    <h3>Top Cities</h3>
+    <canvas id="cityChart" height="220"></canvas>
+  </div>
+</div>
+
+<!-- World Heat Map -->
+<div class="map-section">
+  <div class="map-card">
+    <div class="map-card-header">
+      <h3>Customer Request Heat Map</h3>
+      <div class="map-legend">
+        <span class="geocoding-status" id="geocodeStatus"></span>
+        <div><span class="legend-dot" style="background:#6c63ff;"></span> Single request</div>
+        <div><span class="legend-dot" style="background:#f59e0b;"></span> Multiple requests</div>
+        <div><span class="legend-dot" style="background:#ef4444;"></span> High concentration</div>
+        <button class="btn-fullscreen" id="mapFullscreenBtn" onclick="toggleMapFullscreen()">⛶ Fullscreen</button>
+      </div>
+    </div>
+    <div id="mapContainer"></div>
+    <div class="map-stats">
+      <div>Mapped: <span id="mapMapped">0</span> of <span id="mapTotal">0</span> requests</div>
+      <div>Countries: <span id="mapCountries">0</span></div>
+      <div>Hottest region: <span id="mapHottest">—</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="table-section">
+  <div class="table-card">
+    <h3>All Customer Requests <span id="tableCount" style="color:var(--muted);font-weight:400;"></span></h3>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortTable('date')">Date <span class="sort-arrow" id="sort-date">▼</span></th>
+            <th onclick="sortTable('name')">Name <span class="sort-arrow" id="sort-name"></span></th>
+            <th onclick="sortTable('business')">Business <span class="sort-arrow" id="sort-business"></span></th>
+            <th onclick="sortTable('type')">Type <span class="sort-arrow" id="sort-type"></span></th>
+            <th onclick="sortTable('state')">State <span class="sort-arrow" id="sort-state"></span></th>
+            <th onclick="sortTable('city')">City <span class="sort-arrow" id="sort-city"></span></th>
+            <th>Email</th>
+            <th>Website</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <span id="pageInfo"></span>
+      <div style="display:flex;gap:4px;">
+        <button onclick="changePage(-1)" id="prevBtn">← Prev</button>
+        <button onclick="changePage(1)" id="nextBtn">Next →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <h2>Import Customer Data</h2>
+    <p>Paste CSV data or drag a CSV file below. Expected columns: <strong>date, name, email, phone, website, business_name, type, country, state, city, message</strong>. The first row should be headers.</p>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      📁 Drop CSV file here or click to browse
+      <input type="file" id="fileInput" accept=".csv,.json" style="display:none;" onchange="handleFile(event)">
+    </div>
+    <textarea id="csvInput" placeholder="Or paste CSV data here...&#10;date,name,email,phone,website,business_name,type,country,state,city,message&#10;2026-02-20,Kelly Giles,905cafedowntown@gmail.com,,905cafedowntown.com,The 905 Cafe,COFFEE SHOP,USA,Florida,Melbourne,We are a boutique cafe..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeImport()">Cancel</button>
+      <button class="btn" onclick="importCSV()">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Panel -->
+<div class="settings-panel" id="settingsPanel">
+  <h3>Google Sheet Auto-Sync</h3>
+  <div class="settings-row">
+    <input type="text" id="webAppUrl" placeholder="Paste your Google Apps Script Web App URL here..." />
+    <button class="btn" onclick="saveSettingsAndSync()">Save &amp; Sync</button>
+  </div>
+  <div class="settings-help">
+    To get this URL: open your Apps Script project → click <strong>Deploy → New deployment</strong> →
+    select <strong>Web app</strong> → set "Who has access" to <strong>Anyone</strong> → click <strong>Deploy</strong> → copy the URL.<br>
+    Once saved, the dashboard will auto-sync every time you open it.
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ============ DATA STORE ============
+let DATA = [];
+let filtered = [];
+let currentSort = { key: 'date', dir: 'desc' };
+let currentPage = 0;
+const PAGE_SIZE = 25;
+let timeGrouping = 'week';
+
+// Seed with the sample email
+const SAMPLE_DATA = [
+  { date:'2026-02-23', name:'Kelly Giles', email:'905cafedowntown@gmail.com', phone:'', website:'905cafedowntown.com', business:'The 905 Cafe', type:'COFFEE SHOP', country:'USA', state:'Florida', city:'Melbourne', message:'We are a boutique cafe specializing in food and coffee, est. 1997' }
+];
+
+// ============ STATE / COUNTRY / REGION NORMALIZATION ============
+
+// US state abbreviations → full names
+const STATE_ABBREVS = {
+  'al':'Alabama','ak':'Alaska','az':'Arizona','ar':'Arkansas','ca':'California',
+  'co':'Colorado','ct':'Connecticut','de':'Delaware','fl':'Florida','ga':'Georgia',
+  'hi':'Hawaii','id':'Idaho','il':'Illinois','in':'Indiana','ia':'Iowa',
+  'ks':'Kansas','ky':'Kentucky','la':'Louisiana','me':'Maine','md':'Maryland',
+  'ma':'Massachusetts','mi':'Michigan','mn':'Minnesota','ms':'Mississippi','mo':'Missouri',
+  'mt':'Montana','ne':'Nebraska','nv':'Nevada','nh':'New Hampshire','nj':'New Jersey',
+  'nm':'New Mexico','ny':'New York','nc':'North Carolina','nd':'North Dakota','oh':'Ohio',
+  'ok':'Oklahoma','or':'Oregon','pa':'Pennsylvania','ri':'Rhode Island','sc':'South Carolina',
+  'sd':'South Dakota','tn':'Tennessee','tx':'Texas','ut':'Utah','vt':'Vermont',
+  'va':'Virginia','wa':'Washington','wv':'West Virginia','wi':'Wisconsin','wy':'Wyoming',
+  'dc':'District Of Columbia',
+  // Common alternate abbreviations
+  'fla':'Florida','tex':'Texas','calif':'California','penn':'Pennsylvania','penna':'Pennsylvania',
+  'mich':'Michigan','minn':'Minnesota','wash':'Washington','conn':'Connecticut',
+  'mass':'Massachusetts','tenn':'Tennessee','wisc':'Wisconsin','ore':'Oregon',
+  'okla':'Oklahoma','colo':'Colorado','ariz':'Arizona','miss':'Mississippi',
+  'ala':'Alabama','ind':'Indiana','neb':'Nebraska','kan':'Kansas',
+  // "State" suffix variants
+  'washington state':'Washington','new york state':'New York',
+};
+
+// Canadian provinces
+const CA_PROVINCES = {
+  'bc':'British Columbia','ab':'Alberta','sk':'Saskatchewan','mb':'Manitoba',
+  'on':'Ontario','qc':'Quebec','nb':'New Brunswick','ns':'Nova Scotia',
+  'pe':'Prince Edward Island','nl':'Newfoundland And Labrador','yt':'Yukon',
+  'nt':'Northwest Territories','nu':'Nunavut',
+  'alta':'Alberta','ont':'Ontario','que':'Quebec','sask':'Saskatchewan',
+  'man':'Manitoba','pei':'Prince Edward Island',
+  'british columbia':'British Columbia','alberta':'Alberta','saskatchewan':'Saskatchewan',
+  'manitoba':'Manitoba','ontario':'Ontario','quebec':'Quebec','new brunswick':'New Brunswick',
+  'nova scotia':'Nova Scotia','prince edward island':'Prince Edward Island',
+  'newfoundland and labrador':'Newfoundland And Labrador','newfoundland':'Newfoundland And Labrador',
+  'yukon':'Yukon','northwest territories':'Northwest Territories','nunavut':'Nunavut',
+};
+
+// Australian states
+const AU_STATES = {
+  'nsw':'New South Wales','vic':'Victoria','qld':'Queensland','wa':'Western Australia',
+  'sa':'South Australia','tas':'Tasmania','act':'Australian Capital Territory',
+  'nt':'Northern Territory',
+  'new south wales':'New South Wales','victoria':'Victoria','queensland':'Queensland',
+  'western australia':'Western Australia','south australia':'South Australia',
+  'tasmania':'Tasmania','australian capital territory':'Australian Capital Territory',
+  'northern territory':'Northern Territory',
+};
+
+// International region normalization (variant → canonical)
+const REGION_NORMALIZE = {
+  // France
+  'ile de france':'Ile-de-France','il de france':'Ile-de-France','ile-de-france':'Ile-de-France',
+  'idf':'Ile-de-France','paris region':'Ile-de-France',
+  'provence alpes cote dazur':'Provence-Alpes-Cote d\'Azur','paca':'Provence-Alpes-Cote d\'Azur',
+  'nouvelle aquitaine':'Nouvelle-Aquitaine','occitanie':'Occitanie',
+  'auvergne rhone alpes':'Auvergne-Rhone-Alpes','hauts de france':'Hauts-de-France',
+  'grand est':'Grand Est','bretagne':'Bretagne','normandie':'Normandie',
+  // Taiwan
+  'taipei':'Taiwan','taipei city':'Taiwan','new taipei':'Taiwan','taichung':'Taiwan',
+  'kaohsiung':'Taiwan','tainan':'Taiwan','taiwan':'Taiwan',
+  // UK
+  'england':'England','scotland':'Scotland','wales':'Wales','northern ireland':'Northern Ireland',
+  'uk':'United Kingdom','united kingdom':'United Kingdom','great britain':'United Kingdom',
+  // Germany
+  'bayern':'Bavaria','bavaria':'Bavaria','nordrhein westfalen':'North Rhine-Westphalia',
+  'north rhine westphalia':'North Rhine-Westphalia','nrw':'North Rhine-Westphalia',
+  'baden wurttemberg':'Baden-Wurttemberg','baden wuerttemberg':'Baden-Wurttemberg',
+  'niedersachsen':'Lower Saxony','lower saxony':'Lower Saxony',
+  'hessen':'Hesse','hesse':'Hesse','sachsen':'Saxony','saxony':'Saxony',
+  // India
+  'karnataka':'Karnataka','maharashtra':'Maharashtra','tamil nadu':'Tamil Nadu',
+  'telangana':'Telangana','delhi':'Delhi','ncr':'Delhi',
+  // Japan
+  'tokyo':'Tokyo','osaka':'Osaka','kanto':'Kanto','kansai':'Kansai',
+  // Brazil
+  'sao paulo':'Sao Paulo','sp':'Sao Paulo','rj':'Rio De Janeiro','rio de janeiro':'Rio De Janeiro',
+  // Mexico
+  'cdmx':'Ciudad De Mexico','ciudad de mexico':'Ciudad De Mexico','df':'Ciudad De Mexico',
+  'estado de mexico':'Estado De Mexico','jalisco':'Jalisco','nuevo leon':'Nuevo Leon',
+  // UAE
+  'dubai':'Dubai','abu dhabi':'Abu Dhabi','sharjah':'Sharjah',
+  // South Korea
+  'seoul':'Seoul','gyeonggi':'Gyeonggi','busan':'Busan',
+  // Netherlands
+  'north holland':'North Holland','noord holland':'North Holland',
+  'south holland':'South Holland','zuid holland':'South Holland',
+  // Spain
+  'catalonia':'Catalonia','cataluna':'Catalonia','catalunya':'Catalonia',
+  'comunidad de madrid':'Madrid','madrid':'Madrid','andalusia':'Andalusia','andalucia':'Andalusia',
+  // Italy
+  'lombardia':'Lombardy','lombardy':'Lombardy','lazio':'Lazio','toscana':'Tuscany','tuscany':'Tuscany',
+};
+
+// Known countries — if these appear in the state field, move them to country
+const KNOWN_COUNTRIES = new Set([
+  'usa','united states','united states of america','us','u.s.','u.s.a.',
+  'canada','ca','mexico','mx','brazil','brasil','argentina','colombia','chile','peru',
+  'uk','united kingdom','great britain','england','scotland','wales','ireland',
+  'france','germany','deutschland','italy','italia','spain','espana','portugal',
+  'netherlands','holland','belgium','switzerland','austria','sweden','norway','denmark','finland',
+  'poland','czech republic','czechia','romania','hungary','greece','turkey','turkiye',
+  'russia','ukraine',
+  'china','japan','south korea','korea','north korea','india','pakistan','bangladesh',
+  'indonesia','malaysia','philippines','thailand','vietnam','singapore','taiwan',
+  'australia','new zealand',
+  'south africa','nigeria','kenya','egypt','morocco','ghana','ethiopia',
+  'saudi arabia','uae','united arab emirates','qatar','kuwait','bahrain','oman','israel',
+  'worldwide','global','international','remote','online','n/a','na','none','other',
+]);
+
+// Country name normalization
+const COUNTRY_NORMALIZE = {
+  'usa':'USA','us':'USA','u.s.':'USA','u.s.a.':'USA','united states':'USA','united states of america':'USA','america':'USA',
+  'uk':'UK','united kingdom':'UK','great britain':'UK','england':'UK','gb':'UK',
+  'canada':'Canada','ca':'Canada',
+  'mexico':'Mexico','mx':'Mexico',
+  'brazil':'Brazil','brasil':'Brazil','br':'Brazil',
+  'france':'France','fr':'France',
+  'germany':'Germany','deutschland':'Germany','de':'Germany',
+  'italy':'Italy','italia':'Italy','it':'Italy',
+  'spain':'Spain','espana':'Spain','es':'Spain',
+  'netherlands':'Netherlands','holland':'Netherlands','nl':'Netherlands',
+  'australia':'Australia','au':'Australia',
+  'new zealand':'New Zealand','nz':'New Zealand',
+  'japan':'Japan','jp':'Japan',
+  'china':'China','cn':'China',
+  'south korea':'South Korea','korea':'South Korea','kr':'South Korea',
+  'india':'India',
+  'taiwan':'Taiwan','tw':'Taiwan',
+  'singapore':'Singapore','sg':'Singapore',
+  'uae':'UAE','united arab emirates':'UAE',
+  'south africa':'South Africa','za':'South Africa',
+  'nigeria':'Nigeria','ng':'Nigeria',
+  'indonesia':'Indonesia',
+  'malaysia':'Malaysia','my':'Malaysia',
+  'philippines':'Philippines','ph':'Philippines',
+  'thailand':'Thailand','th':'Thailand',
+  'vietnam':'Vietnam','vn':'Vietnam',
+  'argentina':'Argentina','ar':'Argentina',
+  'colombia':'Colombia','co':'Colombia',
+  'chile':'Chile','cl':'Chile',
+  'peru':'Peru','pe':'Peru',
+  'switzerland':'Switzerland','ch':'Switzerland',
+  'sweden':'Sweden','se':'Sweden',
+  'norway':'Norway','no':'Norway',
+  'denmark':'Denmark','dk':'Denmark',
+  'finland':'Finland','fi':'Finland',
+  'belgium':'Belgium','be':'Belgium',
+  'austria':'Austria','at':'Austria',
+  'poland':'Poland','pl':'Poland',
+  'portugal':'Portugal','pt':'Portugal',
+  'ireland':'Ireland','ie':'Ireland',
+  'israel':'Israel','il':'Israel',
+  'saudi arabia':'Saudi Arabia','sa':'Saudi Arabia',
+  'egypt':'Egypt','eg':'Egypt',
+  'turkey':'Turkey','turkiye':'Turkey','tr':'Turkey',
+  'russia':'Russia','ru':'Russia',
+  'ukraine':'Ukraine','ua':'Ukraine',
+  'kenya':'Kenya','ke':'Kenya',
+  'morocco':'Morocco','ma':'Morocco',
+  'qatar':'Qatar','qa':'Qatar',
+  'remote':'Remote','online':'Remote','worldwide':'Remote','global':'Remote',
+};
+
+// City spelling consolidation (typo correction)
+const CITY_NORMALIZE = {
+  // Common US typos
+  'Austion':'Austin','Huoston':'Houston','Pheonix':'Phoenix','Pittsburg':'Pittsburgh',
+  'Phildelphia':'Philadelphia','San Franciso':'San Francisco','Los Angelos':'Los Angeles',
+  'Los Angles':'Los Angeles','Mimai':'Miami','Atlnata':'Atlanta','Altanta':'Atlanta',
+  'Seatle':'Seattle','Seattel':'Seattle','Portand':'Portland','Nashvile':'Nashville',
+  'Denvr':'Denver','Detoit':'Detroit','Mineapolis':'Minneapolis','Minnepolis':'Minneapolis',
+  'Milwakee':'Milwaukee','Milwuakee':'Milwaukee','Cincinatti':'Cincinnati','Cincinati':'Cincinnati',
+  'Sacremento':'Sacramento','Albuqurque':'Albuquerque','Albuquerqe':'Albuquerque',
+  'Jacksonvile':'Jacksonville','Charlote':'Charlotte','Indianpolis':'Indianapolis',
+  'Indianaoplis':'Indianapolis','Colombus':'Columbus','Cleevland':'Cleveland','Cleavland':'Cleveland',
+  'Balitmore':'Baltimore','Baltmore':'Baltimore','Ralegh':'Raleigh','Raliegh':'Raleigh',
+  'Tuscon':'Tucson','Frenso':'Fresno','Houstan':'Houston','Bostom':'Boston',
+  'New Yrok':'New York','New Yok':'New York','Washingon':'Washington','Washingtin':'Washington',
+  'Memphsis':'Memphis','Lousville':'Louisville','Luisville':'Louisville',
+  'San Deigo':'San Diego','San Dieog':'San Diego','San Antono':'San Antonio',
+  'Okalhoma City':'Oklahoma City','Oklahma City':'Oklahoma City',
+  'Las Vagas':'Las Vegas','Las Vegs':'Las Vegas','Salt Lack City':'Salt Lake City',
+  'Kanas City':'Kansas City','Kansas Cty':'Kansas City',
+  'St Lous':'St Louis','St Lousis':'St Louis',
+  'New Orlenas':'New Orleans','New Orelans':'New Orleans',
+  // International
+  'Ciudad De Mexico':'Mexico City','Mexico Df':'Mexico City','Cdmx':'Mexico City',
+  'Sao Paolo':'Sao Paulo','Munchen':'Munich','Praha':'Prague','Moskva':'Moscow',
+  'Bombay':'Mumbai','Madras':'Chennai','Calcutta':'Kolkata','Peking':'Beijing',
+  'Bengaluru':'Bangalore','Den Haag':'The Hague',
+  'Tokoyo':'Tokyo','Toyko':'Tokyo','Sydeny':'Sydney','Sydny':'Sydney',
+  'Melborne':'Melbourne','Tornoto':'Toronto','Torono':'Toronto',
+  'Vancover':'Vancouver','Vancouvr':'Vancouver',
+  'Monreal':'Montreal','Monteral':'Montreal',
+  'Bejing':'Beijing','Shanhai':'Shanghai','Shanghi':'Shanghai',
+  'Singpaore':'Singapore','Singaproe':'Singapore',
+  'Bangkock':'Bangkok','Bankok':'Bangkok',
+  'Jakarata':'Jakarta','Jakrta':'Jakarta',
+  'Bueanos Aires':'Buenos Aires','Buenos Aries':'Buenos Aires',
+  'Bogata':'Bogota','Bogtoa':'Bogota',
+};
+
+// State spelling consolidation (typo correction)
+const STATE_TYPOS = {
+  'Caifornia':'California','Californa':'California',
+  'Florda':'Florida','Flordia':'Florida',
+  'Texax':'Texas',
+  'Gorgia':'Georgia','Georiga':'Georgia',
+  'Virgina':'Virginia',
+  'Pensylvania':'Pennsylvania','Pennslvania':'Pennsylvania',
+  'Massacusetts':'Massachusetts','Massachusets':'Massachusetts',
+  'Conneticut':'Connecticut','Conecticut':'Connecticut',
+  'Tennesee':'Tennessee','Tennesse':'Tennessee',
+  'Mississipi':'Mississippi','Mississpi':'Mississippi',
+  'Minesota':'Minnesota','Minnisota':'Minnesota',
+  'Wisconson':'Wisconsin','Wisconsn':'Wisconsin',
+  'Louisianna':'Louisiana','Louisana':'Louisiana',
+  'Misouri':'Missouri','Missori':'Missouri',
+  'Illinos':'Illinois','Illinios':'Illinois',
+  'Michgan':'Michigan','Michagan':'Michigan',
+  'Arizonia':'Arizona','Arazona':'Arizona',
+  'Colorodo':'Colorado','Colordo':'Colorado',
+  'Washinton':'Washington','Washingon':'Washington',
+  'Oregn':'Oregon','Oregan':'Oregon',
+  'Neveda':'Nevada','Nevda':'Nevada',
+  'Hawai':'Hawaii',
+  'Kentuky':'Kentucky','Kentuckey':'Kentucky',
+  'Maryand':'Maryland','Mayland':'Maryland',
+  'Indana':'Indiana','Indianna':'Indiana',
+  'Arkasas':'Arkansas','Arkanas':'Arkansas',
+  'Oklahma':'Oklahoma','Oaklahoma':'Oklahoma',
+  'Kanasas':'Kansas','Kensas':'Kansas',
+  'Nebraka':'Nebraska','Nebrask':'Nebraska',
+  'North Carolia':'North Carolina','North Carolna':'North Carolina',
+  'South Carolia':'South Carolina','South Carolna':'South Carolina',
+  'New Jersy':'New Jersey','New Jeresey':'New Jersey',
+  'New Hamshire':'New Hampshire','New Hampshre':'New Hampshire',
+  'Rode Island':'Rhode Island','Rhod Island':'Rhode Island',
+  'Deleware':'Delaware','Delware':'Delaware',
+  'Montanna':'Montana','Montna':'Montana',
+  'Vermnt':'Vermont','Vermontt':'Vermont',
+  'West Virgina':'West Virginia','West Virgnia':'West Virginia',
+  'North Dakoa':'North Dakota','North Dakta':'North Dakota',
+  'South Dakoa':'South Dakota','South Dakta':'South Dakota',
+};
+
+// Metro region mapping
+const METRO_REGIONS = {
+  'NYC Metro': ['New York','Brooklyn','Queens','Bronx','Staten Island','Jersey City','Newark','Hoboken','Yonkers','White Plains','Stamford','New Rochelle'],
+  'Greater Boston': ['Boston','Cambridge','Somerville','Brookline','Newton','Quincy','Waltham','Medford','Arlington','Malden'],
+  'Bay Area': ['San Francisco','San Jose','Oakland','Palo Alto','Mountain View','Sunnyvale','Santa Clara','Fremont','Berkeley','Redwood City','San Mateo','Cupertino','Menlo Park','Daly City','Hayward','Walnut Creek'],
+  'Greater LA': ['Los Angeles','Long Beach','Santa Monica','Pasadena','Glendale','Burbank','Torrance','Inglewood','West Hollywood','Beverly Hills','Culver City','Anaheim','Irvine'],
+  'Chicago Metro': ['Chicago','Evanston','Naperville','Aurora','Joliet','Schaumburg','Oak Park','Elgin'],
+  'DC Metro': ['Washington','Arlington','Alexandria','Bethesda','Silver Spring','Rockville','Fairfax','Reston','Falls Church','McLean'],
+  'DFW Metro': ['Dallas','Fort Worth','Arlington','Plano','Irving','Frisco','McKinney','Garland','Grand Prairie','Denton'],
+  'South Florida': ['Miami','Fort Lauderdale','West Palm Beach','Boca Raton','Hollywood','Coral Gables','Pompano Beach','Hialeah','Deerfield Beach'],
+  'Greater Houston': ['Houston','Sugar Land','Pearland','The Woodlands','Katy','Pasadena','League City','Baytown'],
+  'Seattle Metro': ['Seattle','Bellevue','Tacoma','Redmond','Kirkland','Renton','Kent','Everett','Bothell'],
+  'Denver Metro': ['Denver','Aurora','Lakewood','Boulder','Centennial','Littleton','Westminster','Arvada','Thornton','Broomfield'],
+  'Atlanta Metro': ['Atlanta','Marietta','Decatur','Sandy Springs','Roswell','Alpharetta','Smyrna','Kennesaw','Duluth','Johns Creek'],
+  'Twin Cities': ['Minneapolis','St Paul','Saint Paul','Bloomington','Plymouth','Eden Prairie','Minnetonka','Maple Grove','Eagan'],
+  'Greater Detroit': ['Detroit','Dearborn','Ann Arbor','Troy','Southfield','Livonia','Royal Oak','Sterling Heights'],
+  'Greater Philadelphia': ['Philadelphia','Camden','Cherry Hill','King Of Prussia','Wilmington','Media','Norristown','Conshohocken'],
+  'Greater Phoenix': ['Phoenix','Scottsdale','Tempe','Mesa','Chandler','Gilbert','Glendale','Peoria','Surprise'],
+  'Tampa Bay': ['Tampa','St Petersburg','Saint Petersburg','Clearwater','Brandon','Largo','Sarasota'],
+  'Portland Metro': ['Portland','Beaverton','Hillsboro','Gresham','Lake Oswego','Tigard','Tualatin'],
+};
+
+// Build reverse lookup: city name → region
+const _cityToRegion = {};
+for (const [region, cities] of Object.entries(METRO_REGIONS)) {
+  for (const city of cities) {
+    _cityToRegion[city.toLowerCase()] = region;
+  }
+}
+
+function getMetroRegion(city) {
+  if (!city) return '';
+  return _cityToRegion[city.toLowerCase()] || '';
+}
+
+// Build full name lookup for US states
+const STATE_FULLNAMES = {};
+Object.values(STATE_ABBREVS).forEach(name => {
+  STATE_FULLNAMES[name.toLowerCase()] = name;
+});
+
+function normalizeState(s) {
+  if (!s) return '';
+  let trimmed = s.trim();
+  // Check state typos first (title-cased key lookup)
+  const titleCased = trimmed.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase());
+  if (STATE_TYPOS[titleCased]) trimmed = STATE_TYPOS[titleCased];
+  const lower = trimmed.toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
+
+  // Check US abbreviation
+  if (STATE_ABBREVS[lower]) return STATE_ABBREVS[lower];
+  // Check US full name
+  if (STATE_FULLNAMES[lower]) return STATE_FULLNAMES[lower];
+  // Check Canadian provinces
+  if (CA_PROVINCES[lower]) return CA_PROVINCES[lower];
+  // Check Australian states
+  if (AU_STATES[lower]) return AU_STATES[lower];
+  // Check international regions
+  if (REGION_NORMALIZE[lower]) return REGION_NORMALIZE[lower];
+
+  // Return title-cased original
+  return trimmed.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase());
+}
+
+function normalizeCountry(c) {
+  if (!c) return '';
+  const lower = c.trim().toLowerCase().replace(/\./g, '');
+  if (COUNTRY_NORMALIZE[lower]) return COUNTRY_NORMALIZE[lower];
+  // Title case
+  return c.trim().replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase());
+}
+
+function normalizeRecord(d) {
+  // First: check if the state field actually contains a country name
+  if (d.state) {
+    const stateLower = d.state.trim().toLowerCase().replace(/\./g, '');
+    if (KNOWN_COUNTRIES.has(stateLower)) {
+      // Move it to country if country is empty, otherwise just clear it
+      if (!d.country || d.country.trim() === '') {
+        d.country = d.state.trim();
+      }
+      d.state = '';
+    }
+  }
+
+  // Normalize country
+  d.country = normalizeCountry(d.country);
+
+  // Normalize state/province/region
+  d.state = normalizeState(d.state);
+
+  // Title-case city for consistency then apply city normalization
+  if (d.city) {
+    d.city = d.city.trim().replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase());
+    if (CITY_NORMALIZE[d.city]) d.city = CITY_NORMALIZE[d.city];
+  }
+
+  // Compute metro region
+  d.region = getMetroRegion(d.city);
+
+  // If state is a known Taiwanese city, set state to Taiwan
+  const taiwanCities = ['taipei','new taipei','taichung','kaohsiung','tainan','hsinchu','keelung','taoyuan'];
+  if (d.state && taiwanCities.includes(d.state.toLowerCase())) {
+    if (!d.city || d.city.trim() === '') d.city = d.state;
+    d.state = 'Taiwan';
+    if (!d.country) d.country = 'Taiwan';
+  }
+
+  // Normalize business type casing
+  if (d.type) d.type = d.type.trim().toUpperCase();
+
+  return d;
+}
+
+function normalizeAllData() {
+  DATA.forEach(d => normalizeRecord(d));
+  // Deduplicate by name+email+date
+  const seen = new Set();
+  DATA = DATA.filter(d => {
+    const key = `${(d.name||'').toLowerCase()}|${(d.email||'').toLowerCase()}|${d.date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function saveData() {
+  localStorage.setItem('koatji_customers', JSON.stringify(DATA));
+}
+
+// ============ FILTERS ============
+function applyFilters() {
+  const tv = document.getElementById('timeView').value;
+  const cof = document.getElementById('countryFilter').value;
+  const rf = document.getElementById('regionFilter').value;
+  const sf = document.getElementById('stateFilter').value;
+  const cf = document.getElementById('cityFilter').value;
+  const tf = document.getElementById('typeFilter').value;
+  const search = document.getElementById('searchInput').value.toLowerCase();
+
+  document.getElementById('customRange').style.display = tv === 'custom' ? 'flex' : 'none';
+
+  const now = new Date();
+  let startDate = null, endDate = null;
+
+  if (tv === 'week') {
+    startDate = new Date(now); startDate.setDate(now.getDate() - now.getDay());
+    startDate.setHours(0,0,0,0);
+  } else if (tv === 'month') {
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+  } else if (tv === 'quarter') {
+    const qMonth = Math.floor(now.getMonth() / 3) * 3;
+    startDate = new Date(now.getFullYear(), qMonth, 1);
+  } else if (tv === 'year') {
+    startDate = new Date(now.getFullYear(), 0, 1);
+  } else if (tv === 'custom') {
+    const f = document.getElementById('dateFrom').value;
+    const t = document.getElementById('dateTo').value;
+    if (f) startDate = new Date(f);
+    if (t) { endDate = new Date(t); endDate.setHours(23,59,59); }
+  }
+
+  filtered = DATA.filter(d => {
+    const dd = new Date(d.date);
+    if (startDate && dd < startDate) return false;
+    if (endDate && dd > endDate) return false;
+    if (cof !== 'all' && (d.country||'').toLowerCase() !== cof.toLowerCase()) return false;
+    if (rf !== 'all' && (d.region||'') !== rf) return false;
+    if (sf !== 'all' && d.state.toLowerCase() !== sf.toLowerCase()) return false;
+    if (cf !== 'all' && d.city.toLowerCase() !== cf.toLowerCase()) return false;
+    if (tf !== 'all' && d.type.toLowerCase() !== tf.toLowerCase()) return false;
+    if (search) {
+      const hay = [d.name,d.business,d.email,d.city,d.state,d.type,d.message].join(' ').toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  filtered.sort((a,b) => {
+    let va = a[currentSort.key] || '', vb = b[currentSort.key] || '';
+    if (currentSort.key === 'date') { va = new Date(va); vb = new Date(vb); }
+    else { va = va.toString().toLowerCase(); vb = vb.toString().toLowerCase(); }
+    if (va < vb) return currentSort.dir === 'asc' ? -1 : 1;
+    if (va > vb) return currentSort.dir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  currentPage = 0;
+  populateDropdowns();
+  updateKPIs();
+  renderTable();
+  renderCharts();
+}
+
+function populateDropdowns() {
+  const countries = [...new Set(DATA.map(d => d.country).filter(Boolean))].sort();
+  const regions = [...new Set(DATA.map(d => d.region).filter(Boolean))].sort();
+  const states = [...new Set(DATA.map(d => d.state).filter(Boolean))].sort();
+  const cities = [...new Set(DATA.map(d => d.city).filter(Boolean))].sort();
+  const types = [...new Set(DATA.map(d => d.type).filter(Boolean))].sort();
+
+  setOptions('countryFilter', countries);
+  setOptions('regionFilter', regions);
+  setOptions('stateFilter', states);
+  setOptions('cityFilter', cities);
+  setOptions('typeFilter', types);
+}
+
+function setOptions(id, items) {
+  const el = document.getElementById(id);
+  const cur = el.value;
+  const opts = '<option value="all">All</option>' + items.map(i => `<option value="${i}"${i===cur?' selected':''}>${i}</option>`).join('');
+  el.innerHTML = opts;
+}
+
+// ============ KPIs ============
+function updateKPIs() {
+  document.getElementById('kpiTotal').textContent = filtered.length;
+  document.getElementById('kpiTotalSub').textContent = filtered.length === DATA.length ? 'total' : `of ${DATA.length} total`;
+
+  const countries = [...new Set(filtered.map(d=>d.country).filter(Boolean))];
+  document.getElementById('kpiCountries').textContent = countries.length;
+  document.getElementById('kpiCountriesSub').textContent = countries.slice(0,3).join(', ') + (countries.length>3 ? '...' : '');
+
+  const states = [...new Set(filtered.map(d=>d.state).filter(Boolean))];
+  document.getElementById('kpiStates').textContent = states.length;
+  document.getElementById('kpiStatesSub').textContent = states.slice(0,3).join(', ') + (states.length>3 ? '...' : '');
+
+  const cities = [...new Set(filtered.map(d=>d.city))];
+  document.getElementById('kpiCities').textContent = cities.length;
+  document.getElementById('kpiCitiesSub').textContent = cities.slice(0,3).join(', ') + (cities.length>3 ? '...' : '');
+
+  const regions = [...new Set(filtered.map(d=>d.region).filter(Boolean))];
+  document.getElementById('kpiRegions').textContent = regions.length;
+  document.getElementById('kpiRegionsSub').textContent = regions.slice(0,3).join(', ') + (regions.length>3 ? '...' : '');
+
+  const now = new Date();
+  const weekStart = new Date(now); weekStart.setDate(now.getDate()-now.getDay()); weekStart.setHours(0,0,0,0);
+  const weekCount = DATA.filter(d => new Date(d.date) >= weekStart).length;
+  document.getElementById('kpiWeek').textContent = weekCount;
+}
+
+// ============ TABLE ============
+function renderTable() {
+  const start = currentPage * PAGE_SIZE;
+  const page = filtered.slice(start, start + PAGE_SIZE);
+  const tbody = document.getElementById('tableBody');
+
+  document.getElementById('tableCount').textContent = `(${filtered.length} records)`;
+
+  if (page.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--muted);">No records found. Import data using the button above.</td></tr>';
+  } else {
+    tbody.innerHTML = page.map(d => `<tr>
+      <td style="white-space:nowrap;">${formatDate(d.date)}</td>
+      <td><strong>${esc(d.name)}</strong></td>
+      <td>${esc(d.business)}</td>
+      <td><span class="badge badge-type">${esc(d.type)}</span></td>
+      <td>${esc(d.state)}</td>
+      <td>${esc(d.city)}</td>
+      <td><a href="mailto:${esc(d.email)}" style="color:var(--accent);text-decoration:none;">${esc(d.email)}</a></td>
+      <td>${d.website ? `<a href="https://${esc(d.website)}" target="_blank" style="color:var(--accent2);text-decoration:none;">${esc(d.website)}</a>` : '—'}</td>
+      <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(d.message)}">${esc(d.message)}</td>
+    </tr>`).join('');
+  }
+
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  document.getElementById('pageInfo').textContent = totalPages > 0 ? `Page ${currentPage+1} of ${totalPages}` : '';
+  document.getElementById('prevBtn').disabled = currentPage === 0;
+  document.getElementById('nextBtn').disabled = currentPage >= totalPages - 1;
+}
+
+function changePage(delta) {
+  currentPage += delta;
+  renderTable();
+}
+
+function sortTable(key) {
+  if (currentSort.key === key) currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+  else { currentSort.key = key; currentSort.dir = key === 'date' ? 'desc' : 'asc'; }
+  document.querySelectorAll('.sort-arrow').forEach(el => el.textContent = '');
+  const arrow = document.getElementById('sort-' + key);
+  if (arrow) arrow.textContent = currentSort.dir === 'asc' ? '▲' : '▼';
+  applyFilters();
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+}
+
+function esc(s) { if (!s) return ''; const el=document.createElement('span'); el.textContent=s; return el.innerHTML; }
+
+// ============ CHARTS ============
+let timeChartInst, stateChartInst, typeChartInst, cityChartInst;
+
+function setTimeGrouping(g, btn) {
+  timeGrouping = g;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCharts();
+}
+
+function renderCharts() {
+  renderTimeChart();
+  renderStateChart();
+  renderTypeChart();
+  renderCityChart();
+  renderMap();
+}
+
+function renderTimeChart() {
+  const groups = {};
+  filtered.forEach(d => {
+    const dt = new Date(d.date);
+    let key;
+    if (timeGrouping === 'week') {
+      const wk = getWeekStart(dt);
+      key = wk.toISOString().slice(0,10);
+    } else if (timeGrouping === 'month') {
+      key = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
+    } else if (timeGrouping === 'quarter') {
+      const q = Math.floor(dt.getMonth() / 3) + 1;
+      key = dt.getFullYear() + '-Q' + q;
+    } else {
+      key = String(dt.getFullYear());
+    }
+    groups[key] = (groups[key]||0) + 1;
+  });
+
+  const sorted = Object.entries(groups).sort((a,b) => a[0].localeCompare(b[0]));
+  const labels = sorted.map(([k]) => {
+    if (timeGrouping === 'week') return 'Wk ' + new Date(k).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    if (timeGrouping === 'month') { const [y,m]=k.split('-'); return new Date(y,m-1).toLocaleDateString('en-US',{month:'short',year:'numeric'}); }
+    if (timeGrouping === 'quarter') return k; // Already formatted as "2026-Q1"
+    return k;
+  });
+  const values = sorted.map(([,v])=>v);
+
+  if (timeChartInst) timeChartInst.destroy();
+  timeChartInst = new Chart(document.getElementById('timeChart'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'Requests', data:values, backgroundColor:'rgba(108,99,255,.7)', borderRadius:6, barPercentage:.6 }] },
+    options: { responsive:true, plugins:{ legend:{display:false} }, scales:{ x:{ticks:{color:'#71717a',font:{size:11}},grid:{display:false}}, y:{ticks:{color:'#71717a',font:{size:11}},grid:{color:'rgba(255,255,255,.05)'}} } }
+  });
+}
+
+function renderStateChart() {
+  const groups = {};
+  filtered.forEach(d => { groups[d.state] = (groups[d.state]||0) + 1; });
+  const sorted = Object.entries(groups).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const colors = ['#6c63ff','#00c9a7','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#14b8a6'];
+
+  if (stateChartInst) stateChartInst.destroy();
+  stateChartInst = new Chart(document.getElementById('stateChart'), {
+    type: 'doughnut',
+    data: { labels:sorted.map(([k])=>k), datasets:[{ data:sorted.map(([,v])=>v), backgroundColor:colors.slice(0,sorted.length), borderWidth:0 }] },
+    options: { responsive:true, plugins:{ legend:{ position:'right', labels:{ color:'#e4e4e7', padding:12, font:{size:12} } } } }
+  });
+}
+
+function renderTypeChart() {
+  const groups = {};
+  filtered.forEach(d => { groups[d.type] = (groups[d.type]||0) + 1; });
+  const sorted = Object.entries(groups).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const colors = ['#6c63ff','#00c9a7','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'];
+
+  if (typeChartInst) typeChartInst.destroy();
+  typeChartInst = new Chart(document.getElementById('typeChart'), {
+    type: 'polarArea',
+    data: { labels:sorted.map(([k])=>k), datasets:[{ data:sorted.map(([,v])=>v), backgroundColor:colors.map(c=>c+'99'), borderWidth:0 }] },
+    options: { responsive:true, plugins:{ legend:{ position:'right', labels:{ color:'#e4e4e7', padding:10, font:{size:11} } } }, scales:{ r:{ ticks:{display:false}, grid:{color:'rgba(255,255,255,.08)'} } } }
+  });
+}
+
+function renderCityChart() {
+  const groups = {};
+  filtered.forEach(d => { groups[d.city] = (groups[d.city]||0) + 1; });
+  const sorted = Object.entries(groups).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  if (cityChartInst) cityChartInst.destroy();
+  cityChartInst = new Chart(document.getElementById('cityChart'), {
+    type: 'bar',
+    data: { labels:sorted.map(([k])=>k), datasets:[{ label:'Requests', data:sorted.map(([,v])=>v), backgroundColor:'rgba(0,201,167,.7)', borderRadius:6, barPercentage:.6 }] },
+    options: { indexAxis:'y', responsive:true, plugins:{ legend:{display:false} }, scales:{ x:{ticks:{color:'#71717a'},grid:{color:'rgba(255,255,255,.05)'}}, y:{ticks:{color:'#e4e4e7',font:{size:12}},grid:{display:false}} } }
+  });
+}
+
+function getWeekStart(d) {
+  const dt = new Date(d);
+  dt.setDate(dt.getDate() - dt.getDay());
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+
+// ============ WORLD HEAT MAP ============
+let map = null;
+let heatLayer = null;
+let markerLayer = null;
+const geoCache = {};
+
+// Built-in geocoding for common locations (city+state → [lat, lng])
+const GEO_DB = {
+  // US Cities
+  'melbourne,florida': [28.0836, -80.6081], 'miami,florida': [25.7617, -80.1918],
+  'orlando,florida': [28.5383, -81.3792], 'tampa,florida': [27.9506, -82.4572],
+  'jacksonville,florida': [30.3322, -81.6557], 'fort lauderdale,florida': [26.1224, -80.1373],
+  'new york,new york': [40.7128, -74.0060], 'los angeles,california': [34.0522, -118.2437],
+  'chicago,illinois': [41.8781, -87.6298], 'houston,texas': [29.7604, -95.3698],
+  'phoenix,arizona': [33.4484, -112.0740], 'philadelphia,pennsylvania': [39.9526, -75.1652],
+  'san antonio,texas': [29.4241, -98.4936], 'san diego,california': [32.7157, -117.1611],
+  'dallas,texas': [32.7767, -96.7970], 'austin,texas': [30.2672, -97.7431],
+  'san jose,california': [37.3382, -121.8863], 'san francisco,california': [37.7749, -122.4194],
+  'columbus,ohio': [39.9612, -82.9988], 'charlotte,north carolina': [35.2271, -80.8431],
+  'indianapolis,indiana': [39.7684, -86.1581], 'seattle,washington': [47.6062, -122.3321],
+  'denver,colorado': [39.7392, -104.9903], 'nashville,tennessee': [36.1627, -86.7816],
+  'portland,oregon': [45.5152, -122.6784], 'las vegas,nevada': [36.1699, -115.1398],
+  'memphis,tennessee': [35.1495, -90.0490], 'louisville,kentucky': [38.2527, -85.7585],
+  'baltimore,maryland': [39.2904, -76.6122], 'milwaukee,wisconsin': [43.0389, -87.9065],
+  'albuquerque,new mexico': [35.0844, -106.6504], 'tucson,arizona': [32.2226, -110.9747],
+  'fresno,california': [36.7378, -119.7871], 'sacramento,california': [38.5816, -121.4944],
+  'atlanta,georgia': [33.7490, -84.3880], 'detroit,michigan': [42.3314, -83.0458],
+  'boston,massachusetts': [42.3601, -71.0589], 'minneapolis,minnesota': [44.9778, -93.2650],
+  'raleigh,north carolina': [35.7796, -78.6382], 'salt lake city,utah': [40.7608, -111.8910],
+  'pittsburgh,pennsylvania': [40.4406, -79.9959], 'new orleans,louisiana': [29.9511, -90.0715],
+  'st louis,missouri': [38.6270, -90.1994], 'kansas city,missouri': [39.0997, -94.5786],
+  'cleveland,ohio': [41.4993, -81.6944], 'cincinnati,ohio': [39.1031, -84.5120],
+  'richmond,virginia': [37.5407, -77.4360], 'honolulu,hawaii': [21.3069, -157.8583],
+  'boise,idaho': [43.6150, -116.2023], 'anchorage,alaska': [61.2181, -149.9003],
+  // International
+  'london,england': [51.5074, -0.1278], 'london,uk': [51.5074, -0.1278],
+  'paris,france': [48.8566, 2.3522], 'berlin,germany': [52.5200, 13.4050],
+  'tokyo,japan': [35.6762, 139.6503], 'sydney,australia': [-33.8688, 151.2093],
+  'melbourne,australia': [-37.8136, 144.9631], 'toronto,canada': [43.6532, -79.3832],
+  'vancouver,canada': [49.2827, -123.1207], 'mexico city,mexico': [19.4326, -99.1332],
+  'sao paulo,brazil': [-23.5505, -46.6333], 'rio de janeiro,brazil': [-22.9068, -43.1729],
+  'mumbai,india': [19.0760, 72.8777], 'delhi,india': [28.7041, 77.1025],
+  'bangalore,india': [12.9716, 77.5946], 'shanghai,china': [31.2304, 121.4737],
+  'beijing,china': [39.9042, 116.4074], 'dubai,uae': [25.2048, 55.2708],
+  'singapore,singapore': [1.3521, 103.8198], 'seoul,south korea': [37.5665, 126.9780],
+  'amsterdam,netherlands': [52.3676, 4.9041], 'madrid,spain': [40.4168, -3.7038],
+  'rome,italy': [41.9028, 12.4964], 'stockholm,sweden': [59.3293, 18.0686],
+  'cape town,south africa': [-33.9249, 18.4241], 'nairobi,kenya': [-1.2921, 36.8219],
+  'lagos,nigeria': [6.5244, 3.3792], 'cairo,egypt': [30.0444, 31.2357],
+  'buenos aires,argentina': [-34.6037, -58.3816], 'bogota,colombia': [4.7110, -74.0721],
+  'lima,peru': [-12.0464, -77.0428], 'santiago,chile': [-33.4489, -70.6693],
+  'auckland,new zealand': [-36.8485, 174.7633], 'bangkok,thailand': [13.7563, 100.5018],
+  'hanoi,vietnam': [21.0278, 105.8342], 'manila,philippines': [14.5995, 120.9842],
+  'jakarta,indonesia': [-6.2088, 106.8456], 'kuala lumpur,malaysia': [3.1390, 101.6869],
+};
+
+// US state center coordinates fallback
+const STATE_CENTERS = {
+  'alabama':[32.8,-86.8],'alaska':[64.2,-152.5],'arizona':[34.0,-111.1],'arkansas':[35.0,-92.4],
+  'california':[36.8,-119.4],'colorado':[39.1,-105.4],'connecticut':[41.6,-72.7],'delaware':[39.0,-75.5],
+  'florida':[27.8,-81.8],'georgia':[32.2,-83.4],'hawaii':[19.9,-155.6],'idaho':[44.1,-114.7],
+  'illinois':[40.3,-89.0],'indiana':[40.3,-86.1],'iowa':[42.0,-93.2],'kansas':[38.5,-98.8],
+  'kentucky':[37.8,-84.3],'louisiana':[31.2,-92.1],'maine':[45.3,-69.4],'maryland':[39.0,-76.6],
+  'massachusetts':[42.4,-71.4],'michigan':[44.3,-85.6],'minnesota':[46.7,-94.7],'mississippi':[32.7,-89.5],
+  'missouri':[38.5,-92.3],'montana':[46.9,-110.4],'nebraska':[41.1,-98.3],'nevada':[38.8,-116.4],
+  'new hampshire':[43.2,-71.6],'new jersey':[40.1,-74.5],'new mexico':[34.8,-106.2],'new york':[43.0,-75.0],
+  'north carolina':[35.8,-80.0],'north dakota':[47.5,-100.4],'ohio':[40.4,-82.9],'oklahoma':[35.0,-97.1],
+  'oregon':[43.8,-120.6],'pennsylvania':[41.2,-77.2],'rhode island':[41.6,-71.5],'south carolina':[34.0,-81.2],
+  'south dakota':[43.9,-99.9],'tennessee':[35.5,-86.6],'texas':[31.0,-100.0],'utah':[39.3,-111.1],
+  'vermont':[44.0,-72.7],'virginia':[37.8,-79.4],'washington':[47.8,-120.7],'west virginia':[38.6,-80.9],
+  'wisconsin':[43.8,-88.8],'wyoming':[43.1,-107.6],'district of columbia':[38.9,-77.0],
+};
+
+function initMap() {
+  if (map) return;
+  map = L.map('mapContainer', {
+    center: [25, 0],
+    zoom: 2,
+    minZoom: 2,
+    maxZoom: 13,
+    zoomControl: true,
+    attributionControl: false
+  });
+
+  // Dark tile layer
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 19
+  }).addTo(map);
+
+  // Attribution
+  L.control.attribution({ prefix: false, position: 'bottomright' })
+    .addAttribution('&copy; <a href="https://carto.com/" style="color:#71717a;">CARTO</a>')
+    .addTo(map);
+
+  markerLayer = L.layerGroup().addTo(map);
+}
+
+function toggleMapFullscreen() {
+  const card = document.querySelector('.map-card');
+  const btn = document.getElementById('mapFullscreenBtn');
+  card.classList.toggle('fullscreen');
+  if (card.classList.contains('fullscreen')) {
+    btn.textContent = '✕ Exit Fullscreen';
+    document.body.style.overflow = 'hidden';
+  } else {
+    btn.textContent = '⛶ Fullscreen';
+    document.body.style.overflow = '';
+  }
+  // Tell Leaflet to recalculate its size
+  setTimeout(() => { if (map) map.invalidateSize(); }, 100);
+}
+
+// Close fullscreen with Escape key
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.querySelector('.map-card.fullscreen')) {
+    toggleMapFullscreen();
+  }
+});
+
+function geocode(city, state, country) {
+  const key = (city + ',' + state).toLowerCase().trim();
+  // Check exact match
+  if (GEO_DB[key]) return GEO_DB[key];
+  // Check state center fallback
+  const stLower = (state || '').toLowerCase().trim();
+  if (STATE_CENTERS[stLower]) return STATE_CENTERS[stLower];
+  // Check country-level fallback
+  const cKey = (city + ',' + country).toLowerCase().trim();
+  if (GEO_DB[cKey]) return GEO_DB[cKey];
+  return null;
+}
+
+async function geocodeAsync(city, state, country) {
+  const sync = geocode(city, state, country);
+  if (sync) return sync;
+
+  // Build cache key
+  const cacheKey = [city, state, country].filter(Boolean).join(',').toLowerCase();
+  if (geoCache[cacheKey]) return geoCache[cacheKey];
+  if (geoCache[cacheKey] === false) return null; // Previously failed
+
+  // Try Nominatim (free, no API key needed)
+  try {
+    const q = [city, state, country].filter(Boolean).join(', ');
+    const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`);
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.length > 0) {
+        const coords = [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+        geoCache[cacheKey] = coords;
+        return coords;
+      }
+    }
+  } catch(e) { /* fail silently */ }
+
+  geoCache[cacheKey] = false;
+  return null;
+}
+
+async function renderMap() {
+  initMap();
+  markerLayer.clearLayers();
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+
+  const statusEl = document.getElementById('geocodeStatus');
+  statusEl.textContent = 'Geocoding...';
+
+  const heatPoints = [];
+  const locationGroups = {};
+  let mapped = 0;
+  let pending = [];
+
+  // Group by city+state
+  filtered.forEach(d => {
+    const key = [d.city, d.state, d.country].filter(Boolean).join(',').toLowerCase();
+    if (!locationGroups[key]) locationGroups[key] = { city: d.city, state: d.state, country: d.country, items: [] };
+    locationGroups[key].items.push(d);
+  });
+
+  // First pass: synchronous geocoding
+  const asyncNeeded = [];
+  for (const [key, group] of Object.entries(locationGroups)) {
+    const coords = geocode(group.city, group.state, group.country);
+    if (coords) {
+      addMapPoints(coords, group, heatPoints);
+      mapped += group.items.length;
+    } else {
+      asyncNeeded.push({ key, group });
+    }
+  }
+
+  updateMapStats(mapped, filtered.length);
+
+  // Second pass: async geocoding for unknowns (batched with delay for rate limiting)
+  for (let i = 0; i < asyncNeeded.length; i++) {
+    const { key, group } = asyncNeeded[i];
+    statusEl.textContent = `Geocoding ${i+1}/${asyncNeeded.length}...`;
+
+    const coords = await geocodeAsync(group.city, group.state, group.country);
+    if (coords) {
+      addMapPoints(coords, group, heatPoints);
+      mapped += group.items.length;
+      updateMapStats(mapped, filtered.length);
+    }
+
+    // Rate limit: 1 req/sec for Nominatim
+    if (i < asyncNeeded.length - 1) await new Promise(r => setTimeout(r, 1100));
+  }
+
+  // Render heat layer
+  if (heatPoints.length > 0) {
+    heatLayer = L.heatLayer(heatPoints, {
+      radius: 35,
+      blur: 25,
+      maxZoom: 10,
+      max: Math.max(...heatPoints.map(p => p[2]), 1),
+      gradient: { 0.2: '#6c63ff', 0.5: '#00c9a7', 0.7: '#f59e0b', 1.0: '#ef4444' }
+    }).addTo(map);
+
+    // Fit bounds if we have points
+    const latLngs = heatPoints.map(p => [p[0], p[1]]);
+    if (latLngs.length > 1) {
+      map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 6 });
+    } else if (latLngs.length === 1) {
+      map.setView(latLngs[0], 5);
+    }
+  }
+
+  statusEl.textContent = '';
+  updateMapStats(mapped, filtered.length);
+}
+
+function addMapPoints(coords, group, heatPoints) {
+  const count = group.items.length;
+  // Add to heat layer with intensity based on count
+  heatPoints.push([coords[0], coords[1], count]);
+
+  // Add circle marker
+  const radius = Math.min(6 + Math.sqrt(count) * 4, 25);
+  const color = count >= 10 ? '#ef4444' : count >= 3 ? '#f59e0b' : '#6c63ff';
+
+  const marker = L.circleMarker(coords, {
+    radius: radius,
+    fillColor: color,
+    fillOpacity: 0.7,
+    color: color,
+    weight: 2,
+    opacity: 0.9
+  });
+
+  // Build popup content
+  const businesses = group.items.slice(0, 5).map(d =>
+    `<div style="margin:2px 0;"><strong>${esc(d.name)}</strong>${d.business ? ' — ' + esc(d.business) : ''}</div>`
+  ).join('');
+  const more = count > 5 ? `<div style="color:#71717a;margin-top:4px;">+${count-5} more</div>` : '';
+
+  marker.bindPopup(`
+    <div style="min-width:180px;">
+      <div style="font-weight:700;font-size:14px;margin-bottom:6px;">${esc(group.city)}, ${esc(group.state)}</div>
+      <div style="color:#6c63ff;font-weight:600;margin-bottom:8px;">${count} request${count>1?'s':''}</div>
+      ${businesses}
+      ${more}
+    </div>
+  `, { maxWidth: 300 });
+
+  markerLayer.addLayer(marker);
+
+  // Add count label for clusters
+  if (count > 1) {
+    const icon = L.divIcon({
+      className: 'cluster-icon',
+      html: `<div style="width:${radius*2}px;height:${radius*2}px;line-height:${radius*2}px;text-align:center;font-size:${Math.min(11+count,16)}px;">${count}</div>`,
+      iconSize: [radius*2, radius*2]
+    });
+    const label = L.marker(coords, { icon, interactive: false });
+    markerLayer.addLayer(label);
+  }
+}
+
+function updateMapStats(mapped, total) {
+  document.getElementById('mapMapped').textContent = mapped;
+  document.getElementById('mapTotal').textContent = total;
+
+  const countries = [...new Set(filtered.map(d => d.country).filter(Boolean))];
+  document.getElementById('mapCountries').textContent = countries.length;
+
+  // Find hottest region
+  const regionCounts = {};
+  filtered.forEach(d => {
+    const region = [d.city, d.state].filter(Boolean).join(', ');
+    if (region) regionCounts[region] = (regionCounts[region] || 0) + 1;
+  });
+  const hottest = Object.entries(regionCounts).sort((a,b) => b[1]-a[1])[0];
+  document.getElementById('mapHottest').textContent = hottest ? `${hottest[0]} (${hottest[1]})` : '—';
+}
+
+// ============ IMPORT / EXPORT ============
+function openImport() { document.getElementById('importModal').classList.add('active'); }
+function closeImport() { document.getElementById('importModal').classList.remove('active'); }
+
+function importCSV() {
+  const raw = document.getElementById('csvInput').value.trim();
+  if (!raw) { alert('Please paste CSV data or drop a file.'); return; }
+  const rows = parseCSV(raw);
+  if (rows.length < 2) { alert('No data rows found.'); return; }
+
+  const headers = rows[0].map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g,'_'));
+  const colMap = {
+    date: findCol(headers, ['date','received','timestamp','created']),
+    name: findCol(headers, ['name','contact_name','customer_name','full_name']),
+    email: findCol(headers, ['email','email_address','contact_email']),
+    phone: findCol(headers, ['phone','phone_number','tel']),
+    website: findCol(headers, ['website','url','web','site']),
+    business: findCol(headers, ['business_name','business','company','company_name']),
+    type: findCol(headers, ['type','business_type','you_represent_a','category','represent']),
+    country: findCol(headers, ['country','nation']),
+    state: findCol(headers, ['state','province','region']),
+    city: findCol(headers, ['city','town','location']),
+    message: findCol(headers, ['message','body','note','notes','description','details'])
+  };
+
+  let added = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.length < 3) continue;
+    const entry = {
+      date: getVal(r, colMap.date) || new Date().toISOString().slice(0,10),
+      name: getVal(r, colMap.name) || '',
+      email: getVal(r, colMap.email) || '',
+      phone: getVal(r, colMap.phone) || '',
+      website: getVal(r, colMap.website) || '',
+      business: getVal(r, colMap.business) || '',
+      type: getVal(r, colMap.type) || '',
+      country: getVal(r, colMap.country) || '',
+      state: titleCase(getVal(r, colMap.state) || ''),
+      city: titleCase(getVal(r, colMap.city) || ''),
+      message: getVal(r, colMap.message) || ''
+    };
+    // Handle location field that might be "usa, florida, melbourne"
+    if (!entry.state && colMap.city !== -1) {
+      const loc = getVal(r, findCol(headers, ['location']));
+      if (loc && loc.includes(',')) {
+        const parts = loc.split(',').map(s=>s.trim());
+        if (parts.length >= 3) { entry.country=parts[0]; entry.state=titleCase(parts[1]); entry.city=titleCase(parts[2]); }
+        else if (parts.length === 2) { entry.state=titleCase(parts[0]); entry.city=titleCase(parts[1]); }
+      }
+    }
+    // Normalize state/city before dedup
+    normalizeRecord(entry);
+    // Dedup by email+date
+    const exists = DATA.some(d => d.email === entry.email && d.date === entry.date && d.name === entry.name);
+    if (!exists && (entry.name || entry.email)) {
+      DATA.push(entry);
+      added++;
+    }
+  }
+
+  saveData();
+  closeImport();
+  document.getElementById('csvInput').value = '';
+  applyFilters();
+  document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  alert(`Imported ${added} new records. ${rows.length - 1 - added} duplicates skipped.`);
+}
+
+function findCol(headers, candidates) {
+  for (const c of candidates) {
+    const idx = headers.indexOf(c);
+    if (idx !== -1) return idx;
+  }
+  // Fuzzy match
+  for (const c of candidates) {
+    const idx = headers.findIndex(h => h.includes(c));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
+function getVal(row, idx) { return idx >= 0 && idx < row.length ? row[idx].trim() : ''; }
+function titleCase(s) { return s.replace(/\w\S*/g, t => t.charAt(0).toUpperCase() + t.substr(1).toLowerCase()); }
+
+function parseCSV(text) {
+  const rows = [];
+  let current = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { current.push(field); field = ''; }
+      else if (c === '\n' || (c === '\r' && text[i+1] === '\n')) {
+        current.push(field); field = '';
+        if (current.some(f=>f.trim())) rows.push(current);
+        current = [];
+        if (c === '\r') i++;
+      } else field += c;
+    }
+  }
+  current.push(field);
+  if (current.some(f=>f.trim())) rows.push(current);
+  return rows;
+}
+
+function exportCSV() {
+  const headers = ['date','name','email','phone','website','business_name','type','country','state','city','message'];
+  const csv = [headers.join(','), ...filtered.map(d =>
+    headers.map(h => {
+      const key = h === 'business_name' ? 'business' : h;
+      const val = d[key] || '';
+      return val.includes(',') || val.includes('"') ? `"${val.replace(/"/g,'""')}"` : val;
+    }).join(',')
+  )].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `koatji_customers_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function exportExcel() {
+  const headers = ['date','name','email','phone','website','business_name','type','country','state','city','region','message'];
+  const rows = filtered.map(d => ({
+    date: d.date || '',
+    name: d.name || '',
+    email: d.email || '',
+    phone: d.phone || '',
+    website: d.website || '',
+    business_name: d.business || '',
+    type: d.type || '',
+    country: d.country || '',
+    state: d.state || '',
+    city: d.city || '',
+    region: d.region || '',
+    message: d.message || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows, { header: headers });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Customer Requests');
+  XLSX.writeFile(wb, `koatji_customers_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// Drag and drop
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) readFile(file);
+});
+
+function handleFile(e) { if (e.target.files[0]) readFile(e.target.files[0]); }
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('csvInput').value = e.target.result; };
+  reader.readAsText(file);
+}
+
+// ============ GOOGLE SHEET AUTO-SYNC ============
+
+const DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxMPJcEyorXC1ZtduqCTyGVVW_vRKUxZZ2rNHyCg1YxJT2eAPXVfFGSdvKfprX4P9I8Nw/exec';
+
+function toggleSettings() {
+  document.getElementById('settingsPanel').classList.toggle('active');
+  // Load saved URL into input
+  const saved = localStorage.getItem('koatji_webapp_url') || DEFAULT_WEBAPP_URL;
+  if (saved) document.getElementById('webAppUrl').value = saved;
+}
+
+function saveSettingsAndSync() {
+  const url = document.getElementById('webAppUrl').value.trim();
+  if (!url) { alert('Please paste your Web App URL.'); return; }
+  if (!url.startsWith('https://script.google.com/')) {
+    alert('That doesn\'t look like a Google Apps Script Web App URL. It should start with https://script.google.com/');
+    return;
+  }
+  localStorage.setItem('koatji_webapp_url', url);
+  document.getElementById('settingsPanel').classList.remove('active');
+  syncFromSheet();
+}
+
+function syncFromSheet() {
+  const url = localStorage.getItem('koatji_webapp_url') || DEFAULT_WEBAPP_URL;
+  const statusEl = document.getElementById('syncStatus');
+
+  if (!url) {
+    statusEl.textContent = 'No sync URL — open Settings';
+    statusEl.className = 'sync-status sync-err';
+    document.getElementById('settingsPanel').classList.add('active');
+    const saved = localStorage.getItem('koatji_webapp_url');
+    if (saved) document.getElementById('webAppUrl').value = saved;
+    return;
+  }
+
+  statusEl.textContent = 'Syncing...';
+  statusEl.className = 'sync-status sync-loading';
+
+  // Use JSONP (script tag injection) to avoid CORS issues with local files
+  const callbackName = '_koatjiSync_' + Date.now();
+  const script = document.createElement('script');
+
+  // Timeout after 15 seconds
+  const timeout = setTimeout(() => {
+    cleanup();
+    statusEl.textContent = 'Sync timed out — check your URL in Settings';
+    statusEl.className = 'sync-status sync-err';
+  }, 15000);
+
+  function cleanup() {
+    clearTimeout(timeout);
+    delete window[callbackName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+  }
+
+  // Define the JSONP callback
+  window[callbackName] = function(json) {
+    cleanup();
+
+    if (!json || !json.success) {
+      statusEl.textContent = 'Sync failed — ' + (json && json.error ? json.error : 'Unknown error');
+      statusEl.className = 'sync-status sync-err';
+      return;
+    }
+
+    if (json.data && json.data.length > 0) {
+      DATA = json.data;
+      normalizeAllData();
+      saveData();
+      applyFilters();
+      statusEl.textContent = 'Synced ' + json.count + ' records';
+      statusEl.className = 'sync-status sync-ok';
+    } else {
+      statusEl.textContent = 'Synced — no records yet';
+      statusEl.className = 'sync-status sync-ok';
+    }
+
+    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  };
+
+  // Handle script load error
+  script.onerror = function() {
+    cleanup();
+    statusEl.textContent = 'Sync failed — could not reach server';
+    statusEl.className = 'sync-status sync-err';
+  };
+
+  // Add callback parameter to URL
+  const separator = url.includes('?') ? '&' : '?';
+  script.src = url + separator + 'callback=' + callbackName;
+  document.body.appendChild(script);
+}
+
+// ============ INIT ============
+function init() {
+  // Load cached data first (so dashboard isn't empty while syncing)
+  const saved = localStorage.getItem('koatji_customers');
+  if (saved) {
+    try { DATA = JSON.parse(saved); } catch(e) { DATA = [...SAMPLE_DATA]; }
+  } else {
+    DATA = [...SAMPLE_DATA];
+  }
+  normalizeAllData();
+  applyFilters();
+  document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+  // Auto-sync — uses hardcoded URL or any user-saved override
+  syncFromSheet();
+}
+
+init();
+</script>
+</body>
+</html>
