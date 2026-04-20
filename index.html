@@ -327,12 +327,12 @@
 <div class="settings-panel" id="settingsPanel">
   <h3>Google Sheet Auto-Sync</h3>
   <div class="settings-row">
-    <input type="text" id="webAppUrl" placeholder="Paste your Google Apps Script Web App URL here..." />
+    <input type="text" id="webAppUrl" placeholder="Paste your published Google Sheet CSV URL here..." />
     <button class="btn" onclick="saveSettingsAndSync()">Save &amp; Sync</button>
   </div>
   <div class="settings-help">
-    To get this URL: open your Apps Script project → click <strong>Deploy → New deployment</strong> →
-    select <strong>Web app</strong> → set "Who has access" to <strong>Anyone</strong> → click <strong>Deploy</strong> → copy the URL.<br>
+    To get this URL: open your Google Sheet → click <strong>File → Share → Publish to web</strong> →
+    select your sheet tab → format <strong>CSV</strong> → click <strong>Publish</strong> → copy the URL.<br>
     Once saved, the dashboard will auto-sync every time you open it.
   </div>
 </div>
@@ -1468,76 +1468,116 @@ function readFile(file) {
 
 // ============ GOOGLE SHEET AUTO-SYNC ============
 
-const DEFAULT_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxMPJcEyorXC1ZtduqCTyGVVW_vRKUxZZ2rNHyCg1YxJT2eAPXVfFGSdvKfprX4P9I8Nw/exec';
+const DEFAULT_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRzmTB6tz0uy4BAtoyWpJ5_AOzEWxrfPc4Qx2W0p7doGOk7yEMmooyqTSECVInQOhuFs1eZp8iPYdVn/pub?gid=1898133224&single=true&output=csv';
 
 function toggleSettings() {
   document.getElementById('settingsPanel').classList.toggle('active');
-  // Load saved URL into input
-  const saved = localStorage.getItem('koatji_webapp_url') || DEFAULT_WEBAPP_URL;
+  const saved = localStorage.getItem('koatji_csv_url') || DEFAULT_CSV_URL;
   if (saved) document.getElementById('webAppUrl').value = saved;
 }
 
 function saveSettingsAndSync() {
   const url = document.getElementById('webAppUrl').value.trim();
-  if (!url) { alert('Please paste your Web App URL.'); return; }
-  if (!url.startsWith('https://script.google.com/')) {
-    alert('That doesn\'t look like a Google Apps Script Web App URL. It should start with https://script.google.com/');
-    return;
-  }
-  localStorage.setItem('koatji_webapp_url', url);
+  if (!url) { alert('Please paste your published CSV URL.'); return; }
+  localStorage.setItem('koatji_csv_url', url);
   document.getElementById('settingsPanel').classList.remove('active');
   syncFromSheet();
 }
 
-function syncFromSheet() {
-  const url = localStorage.getItem('koatji_webapp_url') || DEFAULT_WEBAPP_URL;
+function parseSyncCSV(text) {
+  const rows = [];
+  let current = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQuotes = false;
+      else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { current.push(field); field = ''; }
+      else if (c === '\n' || (c === '\r' && text[i+1] === '\n')) {
+        current.push(field); field = '';
+        if (current.some(f => f.trim())) rows.push(current);
+        current = [];
+        if (c === '\r') i++;
+      } else field += c;
+    }
+  }
+  current.push(field);
+  if (current.some(f => f.trim())) rows.push(current);
+  return rows;
+}
+
+async function syncFromSheet() {
+  const url = localStorage.getItem('koatji_csv_url') || DEFAULT_CSV_URL;
   const statusEl = document.getElementById('syncStatus');
 
   if (!url) {
     statusEl.textContent = 'No sync URL — open Settings';
     statusEl.className = 'sync-status sync-err';
-    document.getElementById('settingsPanel').classList.add('active');
-    const saved = localStorage.getItem('koatji_webapp_url');
-    if (saved) document.getElementById('webAppUrl').value = saved;
     return;
   }
 
   statusEl.textContent = 'Syncing...';
   statusEl.className = 'sync-status sync-loading';
 
-  // Use JSONP (script tag injection) to avoid CORS issues with local files
-  const callbackName = '_koatjiSync_' + Date.now();
-  const script = document.createElement('script');
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const text = await resp.text();
+    const rows = parseSyncCSV(text);
 
-  // Timeout after 15 seconds
-  const timeout = setTimeout(() => {
-    cleanup();
-    statusEl.textContent = 'Sync timed out — check your URL in Settings';
-    statusEl.className = 'sync-status sync-err';
-  }, 15000);
-
-  function cleanup() {
-    clearTimeout(timeout);
-    delete window[callbackName];
-    if (script.parentNode) script.parentNode.removeChild(script);
-  }
-
-  // Define the JSONP callback
-  window[callbackName] = function(json) {
-    cleanup();
-
-    if (!json || !json.success) {
-      statusEl.textContent = 'Sync failed — ' + (json && json.error ? json.error : 'Unknown error');
-      statusEl.className = 'sync-status sync-err';
+    if (rows.length < 2) {
+      statusEl.textContent = 'Synced — no records yet';
+      statusEl.className = 'sync-status sync-ok';
       return;
     }
 
-    if (json.data && json.data.length > 0) {
-      DATA = json.data;
+    // Map headers to indices
+    const headers = rows[0].map(h => h.trim().toLowerCase());
+    const colMap = {
+      date: headers.indexOf('date'),
+      name: headers.indexOf('name'),
+      email: headers.indexOf('email'),
+      phone: headers.indexOf('phone'),
+      website: headers.indexOf('website'),
+      business: headers.indexOf('business name') !== -1 ? headers.indexOf('business name') : headers.indexOf('business'),
+      type: headers.indexOf('type'),
+      country: headers.indexOf('country'),
+      state: headers.indexOf('state'),
+      city: headers.indexOf('city'),
+      message: headers.indexOf('message')
+    };
+
+    const records = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const name = (colMap.name >= 0 ? r[colMap.name] : '') || '';
+      if (!name.trim()) continue;
+      records.push({
+        date: (colMap.date >= 0 ? r[colMap.date] : '') || '',
+        name: name.trim(),
+        email: (colMap.email >= 0 ? r[colMap.email] : '') || '',
+        phone: (colMap.phone >= 0 ? r[colMap.phone] : '') || '',
+        website: (colMap.website >= 0 ? r[colMap.website] : '') || '',
+        business: (colMap.business >= 0 ? r[colMap.business] : '') || '',
+        type: (colMap.type >= 0 ? r[colMap.type] : '') || '',
+        country: (colMap.country >= 0 ? r[colMap.country] : '') || '',
+        state: (colMap.state >= 0 ? r[colMap.state] : '') || '',
+        city: (colMap.city >= 0 ? r[colMap.city] : '') || '',
+        message: (colMap.message >= 0 ? r[colMap.message] : '') || ''
+      });
+    }
+
+    if (records.length > 0) {
+      DATA = records;
       normalizeAllData();
       saveData();
       applyFilters();
-      statusEl.textContent = 'Synced ' + json.count + ' records';
+      statusEl.textContent = 'Synced ' + records.length + ' records';
       statusEl.className = 'sync-status sync-ok';
     } else {
       statusEl.textContent = 'Synced — no records yet';
@@ -1545,19 +1585,10 @@ function syncFromSheet() {
     }
 
     document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  };
-
-  // Handle script load error
-  script.onerror = function() {
-    cleanup();
-    statusEl.textContent = 'Sync failed — could not reach server';
+  } catch (err) {
+    statusEl.textContent = 'Sync failed — ' + err.message;
     statusEl.className = 'sync-status sync-err';
-  };
-
-  // Add callback parameter to URL
-  const separator = url.includes('?') ? '&' : '?';
-  script.src = url + separator + 'callback=' + callbackName;
-  document.body.appendChild(script);
+  }
 }
 
 // ============ INIT ============
